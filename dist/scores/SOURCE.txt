@@ -1,0 +1,16 @@
+Colección: musetrainer/library
+Origen: https://github.com/musetrainer/library
+Commit: 9128876f6164d96997c877a2be843349a32bdabb
+
+Se incluyen los 69 archivos .mxl de scores/ en ese commit, sin modificar.
+manifest.json conserva los nombres originales, tamaños y hashes SHA-256.
+Los títulos y autores se extraen de los metadatos MusicXML; si faltan,
+se utiliza el nombre del archivo o se indica que el autor no está indicado.
+
+El repositorio de origen se presenta como una colección de MusicXML de
+dominio público. Se conserva esta procedencia; no se añade una licencia
+nueva ni se certifica aquí la situación de derechos de cada arreglo.
+
+Los archivos se usan desde el servidor local de Ivory. Las partituras que
+el usuario importe por su cuenta no se añaden a este directorio. Se guardan
+en data/uploads/ del servidor local, sin enviarse a servicios externos.

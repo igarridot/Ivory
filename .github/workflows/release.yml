@@ -1,0 +1,156 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment (the first release is always v0.1.0)
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ivory-release-master
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    if: github.ref == 'refs/heads/master'
+    uses: ./.github/workflows/tests.yml
+    permissions:
+      contents: read
+
+  publish:
+    name: Publish multi-platform Docker image and release
+    needs: checks
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      DOCKER_IMAGE: ${{ vars.DOCKERHUB_IMAGE || 'norbega/ivory' }}
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Confirm Docker Hub credentials exist
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          if [ -z "$DOCKER_USERNAME" ] || [ -z "$DOCKER_PASSWORD" ]; then
+            echo "::error::Configure DOCKER_USERNAME and DOCKER_PASSWORD in this repository."
+            exit 1
+          fi
+      - name: Skip a superseded master revision
+        id: revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/master" --jq .object.sha)"
+          if [ "$current" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "A newer master revision will publish the next release."
+          fi
+      - name: Compute semantic version
+        id: version
+        if: steps.revision.outputs.current == 'true'
+        env:
+          RELEASE_BUMP: ${{ inputs.bump || 'patch' }}
+        run: node scripts/release-version.mjs
+      - name: Set up QEMU
+        if: steps.revision.outputs.current == 'true'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      - name: Set up Docker Buildx
+        if: steps.revision.outputs.current == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Log in to Docker Hub
+        if: steps.revision.outputs.current == 'true'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Build and publish versioned images
+        id: image
+        if: steps.revision.outputs.current == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: Dockerfile
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE }}:${{ steps.version.outputs.version }}
+            ${{ env.DOCKER_IMAGE }}:${{ steps.version.outputs.tag }}
+          labels: |
+            org.opencontainers.image.title=Ivory
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=ivory-release
+          cache-to: type=gha,mode=max,scope=ivory-release
+      - name: Verify both image architectures
+        if: steps.revision.outputs.current == 'true'
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          docker buildx imagetools inspect "$DOCKER_IMAGE@$IMAGE_DIGEST" --raw > /tmp/ivory-manifest.json
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            const data=JSON.parse(fs.readFileSync('/tmp/ivory-manifest.json','utf8'));
+            const platforms=new Set((data.manifests||[]).map(m=>m.platform?.os+'/'+m.platform?.architecture));
+            for(const expected of ['linux/amd64','linux/arm64']) {
+              if(!platforms.has(expected))throw new Error('Missing platform: '+expected);
+            }
+            console.log('Verified linux/amd64 and linux/arm64');
+          "
+      - name: Create tag and GitHub release
+        if: steps.revision.outputs.current == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --silent 2>/dev/null; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$RELEASE_TAG" -f sha="$GITHUB_SHA"
+          fi
+          printf '%s\n' "Docker Hub: $DOCKER_IMAGE:$RELEASE_VERSION" "Digest: $IMAGE_DIGEST" "Platforms: linux/amd64, linux/arm64" > /tmp/ivory-release-notes.md
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Ivory $RELEASE_TAG" --generate-notes --notes-file /tmp/ivory-release-notes.md
+          fi
+      - name: Update latest image
+        if: steps.revision.outputs.current == 'true'
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: docker buildx imagetools create --tag "$DOCKER_IMAGE:latest" "$DOCKER_IMAGE@$IMAGE_DIGEST"
+      - name: Release summary
+        if: steps.revision.outputs.current == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          {
+            echo "### Ivory $RELEASE_TAG"
+            echo "- Docker image: $DOCKER_IMAGE:$RELEASE_VERSION"
+            echo "- Platforms: linux/amd64, linux/arm64"
+            echo "- Digest: $IMAGE_DIGEST"
+            echo "- Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG"
+          } >> "$GITHUB_STEP_SUMMARY"

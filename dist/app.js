@@ -6,6 +6,7 @@ import { importScore } from './import.js';
 import { validPersonalScore as validSong } from './score-data.js';
 import { loadPersonalLibrary, persistPersonalScore } from './personal-library.js';
 import { resetSongProgress, resetLessonProgress, resetAllProgress } from './progress.js';
+import { GrandPiano } from './piano-audio.js';
 
 const $ = (s, root = document) => root.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -83,13 +84,13 @@ let midi=null, input=null, connection='Sin conectar', velocity='—', lastNote='
 let practice=null, currentSong=null, options=null, playing=false, demo=false, demoPlayed=new Set();
 let currentBeat=-2, viewBeat=-2, frame=0, lastFrame=0, lastInput=0, practiceSeconds=0, pendingSave=0, sinceBreak=0;
 let keyboardRange={min:48,max:83}, keyGeometry=new Map(), pointerNotes=new Map(), computerNotes=new Map();
-let audio=null, audioVoices=new Map(), metronome=false, lastTick=-999, loop=false, noteLabels=true, wrongKey=null;
+let audio=null, piano=null, audioGeneration=0, metronome=false, lastTick=-999, loop=false, noteLabels=true, wrongKey=null;
 let observer=null, pendingImport=null, demoSnapshot=null, importRequest=0;
 
 function shell(content, active=route) {
   const nav=[['home','home','Hoy'],['library','piano','Tocar'],['learn','book','Aprender'],['progress','chart','Mi progreso']];
   const titles={home:'Tu espacio de práctica',library:'Tu biblioteca',learn:'Un paso cada día',progress:'Cada avance cuenta',connection:'Tu piano, conectado',practice:'Una nota cada vez',lesson:'Aprender desde cero'};
-  $('#app').innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="#home" aria-label="Ivory, inicio"><img src="./icon.svg" alt=""><span>ivory<span style="color:#9cae87">.</span></span></a><div class="tagline">Una nota cada día</div><nav class="nav" aria-label="Navegación principal">${nav.map(([id,ico,label])=>`<button data-route="${id}" class="${active===id?'active':''}" ${active===id?'aria-current="page"':''}>${icon(ico)}${label}</button>`).join('')}</nav><div class="sidebar-bottom"><div class="small-quote">“La música empieza<br>con una sola nota.”</div><button class="device-mini" data-route="connection">${icon('bluetooth')}<span><strong>CASIO AP-300</strong><small><i class="dot ${input?'connected':''}"></i><span id="sidebar-status">${esc(connection)}</span></small></span></button></div></aside><main class="main ${route==='practice'?'practice-main':''}" id="main"><header class="topbar"><div class="mobile-brand"><img src="./icon.svg" alt="">ivory.</div><div class="breadcrumb">${icon('notes')}<span>${titles[route] || titles.home}</span></div><div class="top-actions"><span class="subtle date" style="font-size:11px">${new Intl.DateTimeFormat('es',{weekday:'short',day:'numeric',month:'short'}).format(new Date())}</span><span class="streak" title="Días consecutivos con práctica">${icon('fire')} ${streak()} ${streak()===1?'día':'días'}</span><button class="theme-toggle" data-action="theme" aria-label="${darkTheme()?'Activar modo claro':'Activar modo oscuro'}" title="Cambiar tema">${darkTheme()?'☀':'☾'}</button><button class="avatar" data-route="connection" aria-label="Ajustes y conexión">I</button></div></header>${content}<div class="footer-note">Hecho para aprender a tu ritmo. Tu progreso se guarda en este navegador.</div></main></div>`;
+  $('#app').innerHTML=`<div class="shell"><aside class="sidebar"><a class="brand" href="#home" aria-label="Ivory, inicio"><img src="./icon.svg" alt=""><span>ivory<span style="color:#9cae87">.</span></span></a><div class="tagline">Una nota cada día</div><nav class="nav" aria-label="Navegación principal">${nav.map(([id,ico,label])=>`<button data-route="${id}" class="${active===id?'active':''}" ${active===id?'aria-current="page"':''}>${icon(ico)}${label}</button>`).join('')}</nav><div class="sidebar-bottom"><div class="small-quote">“La música empieza<br>con una sola nota.”</div><button class="device-mini" data-route="connection">${icon('bluetooth')}<span><strong>CASIO AP-300</strong><small><i class="dot ${input?'connected':''}"></i><span id="sidebar-status">${esc(connection)}</span></small></span></button></div></aside><main class="main ${route==='practice'?'practice-main':''}" id="main"><header class="topbar"><div class="mobile-brand"><img src="./icon.svg" alt="">ivory.</div><div class="breadcrumb">${icon('notes')}<span>${titles[route] || titles.home}</span></div><div class="top-actions"><span class="subtle date" style="font-size:11px">${new Intl.DateTimeFormat('es',{weekday:'short',day:'numeric',month:'short'}).format(new Date())}</span><span class="streak" title="Días consecutivos con práctica">${icon('fire')} ${streak()} ${streak()===1?'día':'días'}</span><button class="theme-toggle" data-action="theme" aria-label="${darkTheme()?'Activar modo claro':'Activar modo oscuro'}" title="Cambiar tema">${darkTheme()?'☀':'☾'}</button><button class="avatar" data-route="connection" aria-label="Ajustes y conexión">I</button></div></header>${content}<div class="footer-note">Hecho para aprender a tu ritmo. Tu progreso se guarda en este navegador.<br>Sonido: <a href="./audio/salamander/README.txt" target="_blank" rel="noopener">Salamander Grand Piano · Alexander Holm</a> · <a href="./audio/salamander/LICENSE.txt" target="_blank" rel="noopener">CC BY 3.0</a></div></main></div>`;
 }
 function heading(eyebrow,title,subtitle,button='') { return `<div class="page-heading"><div><span class="eyebrow">${eyebrow}</span><h1>${title}</h1>${subtitle?`<p>${subtitle}</p>`:''}</div>${button}</div>`; }
 function level(n){return `<span class="level">${[1,2,3].map(x=>`<i class="${x<=Math.ceil(n*3/8)?'on':''}"></i>`).join('')} Etapa ${n}</span>`;}
@@ -161,7 +162,7 @@ async function navigate(next, id){
   history.replaceState(null,'','#'+hash);window.scrollTo({top:0,behavior:'instant'});
 }
 function render(){({home:renderHome,library:renderLibrary,learn:renderLearn,lesson:renderLesson,progress:renderProgress,connection:renderConnection}[route] || renderHome)();}
-function openDialog(html){if(playing){if(demo)stopDemo();else stopPlayback();checkpoint();}const dialog=$('#dialog');dialog.innerHTML=`<div class="dialog-top"><span class="eyebrow" style="margin:0">IVORY · A TU RITMO</span><button class="close" data-action="close-dialog" aria-label="Cerrar">${icon('close')}</button></div>${html}`;if(!dialog.open)dialog.showModal();}
+function openDialog(html){if(playing){if(demo)stopDemo();else stopPlayback();checkpoint();}else silence();const dialog=$('#dialog');dialog.innerHTML=`<div class="dialog-top"><span class="eyebrow" style="margin:0">IVORY · A TU RITMO</span><button class="close" data-action="close-dialog" aria-label="Cerrar">${icon('close')}</button></div>${html}`;if(!dialog.open)dialog.showModal();}
 function closeDialog(){importRequest++;$('#dialog').close();}
 
 function goalDialog(id){const g=GOALS.find(x=>x.id===id);openDialog(`<h2>${g.title}</h2><p>${g.subtitle}</p><div class="goal-modal-art ${g.color}" aria-hidden="true">${g.id==='moonlight'?'☾':g.id==='interstellar'?'✧':'♬'}</div><p>${g.description}</p><div class="notice">${g.label}<br>${g.id==='moonlight'?'Hay versiones de Moonlight en el repertorio incluido. Puedes buscarlas en la biblioteca.':'Puedes importar un archivo autorizado del arreglo que quieras aprender.'}</div><div class="dialog-actions">${g.id==='moonlight'?action('find-moonlight','Ver Moonlight en mi biblioteca','primary'):''}<a class="btn secondary" href="https://musescore.com/sheetmusic?text=${encodeURIComponent(g.query)}" target="_blank" rel="noopener noreferrer">Buscar en MuseScore ↗</a>${action('import','Importar mi archivo')}</div><p class="onboarding-note">No descargamos ni redistribuimos automáticamente partituras de MuseScore. La disponibilidad de formatos depende de cada partitura y de tu acceso.</p>`);}
@@ -289,7 +290,7 @@ function tickFrame(now){
   if(playing){
     if(demo){
       currentBeat+=dt*options.bpm/60;viewBeat=currentBeat;
-      practice.notes.forEach(n=>{if(n.beat<=currentBeat&&!demoPlayed.has(n.id)){demoPlayed.add(n.id);playTone(n.pitch,Math.max(.08,n.duration*60/options.bpm),.12);}});
+      practice.notes.forEach(n=>{if(n.beat<=currentBeat&&!demoPlayed.has(n.id)){demoPlayed.add(n.id);playTone(n.pitch,Math.max(.08,n.duration*60/options.bpm),n.velocity??80);}});
       if(currentBeat>Math.max(...practice.notes.map(n=>n.beat+n.duration))+.6){stopDemo();toast('Ahora te toca a ti. La escucha no suma puntos.');}
     }else{
       if(options.mode==='rhythm'){currentBeat+=dt*options.bpm/60;viewBeat=currentBeat;practice.advance(checkpointBeat());if(practice.done)finishPractice();}
@@ -313,7 +314,7 @@ function stopDemo(){stopPlayback();demo=false;if(demoSnapshot){currentBeat=demoS
 function togglePlay(){
   if(!practice?.notes.length)return;
   if(playing){if(demo)stopDemo();else stopPlayback();checkpoint();return;}
-  ensureAudio();demo=false;playing=true;lastTick=-999;lastInput=0;
+  silence();ensureAudio();demo=false;playing=true;lastTick=-999;lastInput=0;
   $('#play-button').innerHTML=icon('pause')+' Pausar';$('#practice-status').textContent=options.mode==='wait'?'A tu ritmo':'Sigue el pulso';$('#roll-message').textContent=options.mode==='wait'?'Encuentra las notas iluminadas.':'Cuenta dos pulsos y empieza.';
 }
 function finishPractice(){
@@ -326,14 +327,30 @@ function finishPractice(){
   openDialog(`<h2>${p.coverage>=80?'Una melodía más cerca.':'Cada intento cuenta.'}</h2><p>${esc(s.title)} · Compases ${options.from}–${options.to}</p><div class="result-stars" aria-label="${stars} de 3 estrellas">${'★'.repeat(stars)}${'☆'.repeat(3-stars)}</div><div class="result-stats"><div><strong>${p.coverage}%</strong><small>Notas acertadas</small></div><div><strong>${p.accuracy}%</strong><small>Precisión de pulsaciones</small></div><div><strong>${p.wrong}</strong><small>Pulsaciones extra</small></div></div><p>${options.mode==='wait'?'Has encontrado todas las notas del fragmento a tu ritmo. Prueba a reducir las pulsaciones extra o a seguir el pulso.':'Las notas que no tocaste a tiempo cuentan como omitidas. Baja el tempo o practica un fragmento más corto si lo necesitas.'}</p><div class="dialog-actions">${action('again','Volver a tocar','primary')}${action('finish-home','Guardar y volver')}</div><p class="onboarding-note">${storageProblem?'No se pudo guardar localmente. Exporta una copia desde Conexión.':'Práctica guardada en este navegador.'} Las estrellas corresponden a este fragmento y esta configuración; no certifican el dominio de la pieza completa.</p>`);
   if(loop){closeDialog();resetPractice();togglePlay();}
 }
-function ensureAudio(){try{if(!audio)audio=new(window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();}catch{toast('El sonido de la app no está disponible. El piano puede seguir sonando por sí mismo.');}return audio;}
-function soundOn(pitch,vel=80){
-  const ac=ensureAudio();if(!ac)return;soundOff(pitch);
-  const gain=ac.createGain(),osc=ac.createOscillator();osc.type='triangle';osc.frequency.value=440*2**((pitch-69)/12);gain.gain.setValueAtTime(0,ac.currentTime);gain.gain.linearRampToValueAtTime(.16*(vel/127),ac.currentTime+.008);gain.gain.exponentialRampToValueAtTime(.035,ac.currentTime+.6);osc.connect(gain).connect(ac.destination);osc.start();audioVoices.set(pitch,{osc,gain});
+function ensureAudio(){
+  try{
+    if(!audio){audio=new(window.AudioContext||window.webkitAudioContext)();piano=new GrandPiano(audio);}
+    if(audio.state==='suspended')audio.resume().catch(()=>toast('Pulsa de nuevo para activar el sonido del navegador.'));
+    return audio;
+  }catch{toast('El sonido de la app no está disponible. El piano puede seguir sonando por sí mismo.');return null;}
 }
-function soundOff(pitch){const v=audioVoices.get(pitch);if(!v||!audio)return;v.gain.gain.cancelScheduledValues(audio.currentTime);v.gain.gain.setTargetAtTime(0,audio.currentTime,.045);v.osc.stop(audio.currentTime+.22);audioVoices.delete(pitch);}
-function silence(){for(const p of audioVoices.keys())soundOff(p);}
-function playTone(pitch,duration,volume){const ac=ensureAudio();if(!ac)return;const osc=ac.createOscillator(),gain=ac.createGain();osc.type='triangle';osc.frequency.value=440*2**((pitch-69)/12);gain.gain.setValueAtTime(volume,ac.currentTime);gain.gain.exponentialRampToValueAtTime(.001,ac.currentTime+duration);osc.connect(gain).connect(ac.destination);osc.start();osc.stop(ac.currentTime+duration+.05);}
+async function preparePiano(button){
+  if(!ensureAudio())return false;
+  const generation=audioGeneration;
+  button.disabled=true;button.setAttribute('aria-busy','true');
+  if(!piano.ready&&$('#practice-status'))$('#practice-status').textContent='Preparando piano de cola…';
+  try{await piano.load();return generation===audioGeneration&&!document.hidden&&!$('#dialog').open;}
+  catch{if(generation===audioGeneration){toast('No se pudo cargar el piano de cola. Vuelve a intentarlo.');if($('#practice-status'))$('#practice-status').textContent='Sonido no disponible';}return false;}
+  finally{if(button.isConnected){button.disabled=false;button.removeAttribute('aria-busy');}}
+}
+function soundOn(pitch,vel=80){
+  if(!ensureAudio())return;
+  if(!piano.ready)toast('Preparando el sonido de piano de cola…');
+  piano.noteOn(pitch,vel).catch(()=>toast('No se pudo cargar el piano de cola. Vuelve a intentarlo.'));
+}
+function soundOff(pitch){piano?.noteOff(pitch);}
+function silence(){audioGeneration++;piano?.allNotesOff();}
+function playTone(pitch,duration,velocity){piano?.play(pitch,duration,velocity);}
 function playClick(accent){const ac=audio;if(!ac)return;const osc=ac.createOscillator(),gain=ac.createGain();osc.frequency.value=accent?1200:850;gain.gain.setValueAtTime(.045,ac.currentTime);gain.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.04);osc.connect(gain).connect(ac.destination);osc.start();osc.stop(ac.currentTime+.05);}
 
 async function requestMidi(){
@@ -421,7 +438,12 @@ document.addEventListener('click',async event=>{
     case 'find-moonlight':closeDialog();libraryTab='catalog';stageFilter='all';composerFilter='all';searchText='moonlight';libraryPage=1;navigate('library');break;
     case 'previous-page':libraryPage=Math.max(1,libraryPage-1);updateLibraryGrid();$('#library-grid').scrollIntoView({block:'start'});break;
     case 'next-page':libraryPage++;updateLibraryGrid();$('#library-grid').scrollIntoView({block:'start'});break;
-    case 'listen-lesson':{const l=LESSONS.find(l=>l.id===activeLesson);if(l?.listen){ensureAudio();l.listen.notes.forEach((pitch,i)=>setTimeout(()=>playTone(pitch,.8,.15),l.listen.together?0:i*900));}break;}
+    case 'listen-lesson':{
+      const l=LESSONS.find(l=>l.id===activeLesson);if(!l?.listen)break;
+      silence();if(!await preparePiano(el)||route!=='lesson'||activeLesson!==l.id)break;
+      const start=audio.currentTime+.02;
+      l.listen.notes.forEach((pitch,i)=>piano.play(pitch,.8,90,start+(l.listen.together?0:i*.9)));break;
+    }
     case 'connect':navigate('connection');break;
     case 'request-midi':await requestMidi();break;
     case 'close-dialog':closeDialog();break;
@@ -447,7 +469,9 @@ document.addEventListener('click',async event=>{
     case 'again':closeDialog();resetPractice();break;
     case 'finish-home':closeDialog();navigate('home');break;
     case 'demo':{
-      if(!practice.notes.length)break;if(demo){stopDemo();break;}stopPlayback();checkpoint();demoSnapshot={beat:currentBeat,view:viewBeat};demo=true;playing=true;currentBeat=-1;demoPlayed.clear();ensureAudio();$('#play-button').innerHTML=icon('pause')+' Detener escucha';$('#practice-status').textContent='Demostración · no puntúa';$('#roll-message').textContent='Escucha cómo se conectan las notas.';break;
+      if(!practice.notes.length)break;if(demo){stopDemo();break;}stopPlayback();checkpoint();
+      const song=currentSong;if(!await preparePiano(el)||route!=='practice'||currentSong!==song)break;
+      demoSnapshot={beat:currentBeat,view:viewBeat};demo=true;playing=true;currentBeat=-1;lastFrame=performance.now();demoPlayed.clear();$('#play-button').innerHTML=icon('pause')+' Detener escucha';$('#practice-status').textContent='Demostración · no puntúa';$('#roll-message').textContent='Escucha cómo se conectan las notas.';break;
     }
     case 'metronome':metronome=!metronome;ensureAudio();el.setAttribute('aria-pressed',String(metronome));el.style.background=metronome?'#d7e2c3':'';break;
     case 'practice-settings':openDialog(`<h2>Ajusta tu práctica.</h2><label class="field">Registro del instrumento<select id="range-fit"><option value="original" ${options.range!=='piano'?'selected':''}>Conservar notas originales</option><option value="piano" ${options.range==='piano'?'selected':''}>Adaptar notas fuera de las 88 teclas</option></select></label><label class="field">Asignación de manos<select id="mapping"><option value="none" ${options.mapping==='none'?'selected':''}>Usar la asignación de la partitura</option><option value="split" ${options.mapping==='split'?'selected':''}>Dividir por registro</option></select></label><label class="field">Primera nota de la mano derecha<select id="split">${[48,55,60,64,67,72].map(n=>`<option value="${n}" ${options.split===n?'selected':''}>${noteName(n)}</option>`).join('')}</select></label><label class="field">Repetir al terminar<select id="loop"><option value="no" ${!loop?'selected':''}>No</option><option value="yes" ${loop?'selected':''}>Sí, repetir el fragmento</option></select></label><label class="field">Nombres de las notas<select id="labels"><option value="yes" ${noteLabels?'selected':''}>Mostrar</option><option value="no" ${!noteLabels?'selected':''}>Ocultar</option></select></label><p>La división por registro es una ayuda: no siempre coincide con la mano adecuada. Cambiar manos o compases reinicia el fragmento.</p>${action('close-dialog','Listo','primary')}`);break;
@@ -505,7 +529,7 @@ document.addEventListener('keydown',event=>{
 document.addEventListener('keyup',event=>{const pitch=computerNotes.get(event.key);if(pitch!==undefined){handleOff(pitch);computerNotes.delete(event.key);}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){if(demo)stopDemo();else stopPlayback();checkpoint();}});
 window.addEventListener('pagehide',()=>{if(demo)stopDemo();else stopPlayback();checkpoint();});
-window.addEventListener('blur',()=>{if(playing){if(demo)stopDemo();else stopPlayback();checkpoint();}});
+window.addEventListener('blur',()=>{if(demo)stopDemo();else stopPlayback();checkpoint();});
 $('#dialog').addEventListener('click',event=>{if(event.target===$('#dialog')){const rect=event.target.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)closeDialog();}});
 function initialRoute(){const [r,id]=location.hash.slice(1).split('/');if(['home','library','learn','progress','connection'].includes(r))navigate(r);else if(r==='practice'&&allSongs().some(s=>s.id===decodeURIComponent(id || '')))navigate('practice',decodeURIComponent(id));else if(r==='lesson'&&LESSONS.some(l=>l.id===id))navigate('lesson',id);else navigate('home');}
 window.addEventListener('hashchange',initialRoute);

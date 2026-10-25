@@ -85,7 +85,7 @@ let practice=null, currentSong=null, options=null, playing=false, demo=false, de
 let currentBeat=-2, viewBeat=-2, frame=0, lastFrame=0, lastInput=0, practiceSeconds=0, pendingSave=0, sinceBreak=0;
 let keyboardRange={min:48,max:83}, keyGeometry=new Map(), pointerNotes=new Map(), computerNotes=new Map();
 let audio=null, piano=null, audioGeneration=0, metronome=false, lastTick=-999, loop=false, noteLabels=true, wrongKey=null;
-let observer=null, pendingImport=null, demoSnapshot=null, importRequest=0;
+let observer=null, pendingImport=null, demoSnapshot=null, importRequest=0, completion=null;
 
 function shell(content, active=route) {
   const nav=[['home','home','Hoy'],['library','piano','Tocar'],['learn','book','Aprender'],['progress','chart','Mi progreso']];
@@ -162,7 +162,7 @@ async function navigate(next, id){
   history.replaceState(null,'','#'+hash);window.scrollTo({top:0,behavior:'instant'});
 }
 function render(){({home:renderHome,library:renderLibrary,learn:renderLearn,lesson:renderLesson,progress:renderProgress,connection:renderConnection}[route] || renderHome)();}
-function openDialog(html){if(playing){if(demo)stopDemo();else stopPlayback();checkpoint();}else silence();const dialog=$('#dialog');dialog.innerHTML=`<div class="dialog-top"><span class="eyebrow" style="margin:0">IVORY · A TU RITMO</span><button class="close" data-action="close-dialog" aria-label="Cerrar">${icon('close')}</button></div>${html}`;if(!dialog.open)dialog.showModal();}
+function openDialog(html){cancelCompletion();if(playing){if(demo)stopDemo();else stopPlayback();checkpoint();}else silence();const dialog=$('#dialog');dialog.innerHTML=`<div class="dialog-top"><span class="eyebrow" style="margin:0">IVORY · A TU RITMO</span><button class="close" data-action="close-dialog" aria-label="Cerrar">${icon('close')}</button></div>${html}`;if(!dialog.open)dialog.showModal();}
 function closeDialog(){importRequest++;$('#dialog').close();}
 
 function goalDialog(id){const g=GOALS.find(x=>x.id===id);openDialog(`<h2>${g.title}</h2><p>${g.subtitle}</p><div class="goal-modal-art ${g.color}" aria-hidden="true">${g.id==='moonlight'?'☾':g.id==='interstellar'?'✧':'♬'}</div><p>${g.description}</p><div class="notice">${g.label}<br>${g.id==='moonlight'?'Hay versiones de Moonlight en el repertorio incluido. Puedes buscarlas en la biblioteca.':'Puedes importar un archivo autorizado del arreglo que quieras aprender.'}</div><div class="dialog-actions">${g.id==='moonlight'?action('find-moonlight','Ver Moonlight en mi biblioteca','primary'):''}<a class="btn secondary" href="https://musescore.com/sheetmusic?text=${encodeURIComponent(g.query)}" target="_blank" rel="noopener noreferrer">Buscar en MuseScore ↗</a>${action('import','Importar mi archivo')}</div><p class="onboarding-note">No descargamos ni redistribuimos automáticamente partituras de MuseScore. La disponibilidad de formatos depende de cada partitura y de tu acceso.</p>`);}
@@ -273,6 +273,7 @@ function checkpointBeat(){return currentBeat-state.latency/1000*options.bpm/60;}
 function handleOn(pitch,vel=80,source='touch'){
   velocity=vel;lastNote=noteName(pitch);updateMonitor();
   if(source==='touch')soundOn(pitch,vel);
+  if(completion){completion.keys.add(pitch);scheduleCompletion();return;}
   if(!practice||!playing||demo||currentBeat<0&&options.mode==='rhythm')return;
   lastInput=performance.now();
   const result=practice.on(pitch,checkpointBeat());
@@ -281,7 +282,7 @@ function handleOn(pitch,vel=80,source='touch'){
   updatePracticeUI();checkpoint();
   if(practice.done)finishPractice();
 }
-function handleOff(pitch,source='touch'){if(source==='touch')soundOff(pitch);practice?.off(pitch);updatePracticeUI();}
+function handleOff(pitch,source='touch'){if(source==='touch')soundOff(pitch);practice?.off(pitch);if(completion){completion.keys.delete(pitch);scheduleCompletion();}updatePracticeUI();}
 function updateMonitor(){if($('#monitor-note'))$('#monitor-note').textContent=lastNote;if($('#monitor-velocity'))$('#monitor-velocity').textContent=velocity;if($('#monitor-pedal'))$('#monitor-pedal').textContent=pedal>=64?'Sí':'No';}
 function tickFrame(now){
   if(route!=='practice'||!practice)return;
@@ -295,9 +296,9 @@ function tickFrame(now){
     }else{
       if(options.mode==='rhythm'){currentBeat+=dt*options.bpm/60;viewBeat=currentBeat;practice.advance(checkpointBeat());if(practice.done)finishPractice();}
       else {const target=practice.current?.beat || 0;viewBeat+=(target-viewBeat)*Math.min(1,dt*5);currentBeat=target;}
-      if(lastInput && now-lastInput<60000){practiceSeconds+=dt;state.daySeconds[dayKey()]=(state.daySeconds[dayKey()] || 0)+dt;sinceBreak+=dt;pendingSave+=dt;}
+      if(playing && lastInput && now-lastInput<60000){practiceSeconds+=dt;state.daySeconds[dayKey()]=(state.daySeconds[dayKey()] || 0)+dt;sinceBreak+=dt;pendingSave+=dt;}
       if(pendingSave>=5){pendingSave=0;checkpoint();}
-      if(sinceBreak>=state.breakMinutes*60){sinceBreak=0;stopPlayback();checkpoint();openDialog('<h2>Un pequeño respiro.</h2><p>Has practicado un bloque completo. Levántate, mueve las manos con suavidad y descansa unos minutos antes de continuar.</p>'+action('close-dialog','Volver cuando esté listo','primary'));}
+      if(playing && sinceBreak>=state.breakMinutes*60){sinceBreak=0;stopPlayback();checkpoint();openDialog('<h2>Un pequeño respiro.</h2><p>Has practicado un bloque completo. Levántate, mueve las manos con suavidad y descansa unos minutos antes de continuar.</p>'+action('close-dialog','Volver cuando esté listo','primary'));}
     }
     if(metronome && playing){const beat=options.mode==='wait'?(now/1000*options.bpm/60):currentBeat;const integer=Math.floor(beat);if(integer!==lastTick){lastTick=integer;playClick(integer%(currentSong.beatsPerBar||4)===0);}}
     updatePracticeUI();
@@ -306,26 +307,47 @@ function tickFrame(now){
   drawRoll();frame=requestAnimationFrame(tickFrame);
 }
 function stopPlayback(){
-  playing=false;demoPlayed.clear();practice?.clearHeld();pointerNotes.clear();computerNotes.clear();silence();
+  cancelCompletion();playing=false;demoPlayed.clear();practice?.clearHeld();pointerNotes.clear();computerNotes.clear();silence();
   if($('#play-button'))$('#play-button').innerHTML=icon('play')+' Continuar';
   if($('#practice-status'))$('#practice-status').textContent=input?'Piano conectado':'Práctica en pausa';
 }
 function stopDemo(){stopPlayback();demo=false;if(demoSnapshot){currentBeat=demoSnapshot.beat;viewBeat=demoSnapshot.view;demoSnapshot=null;}updatePracticeUI();}
 function togglePlay(){
-  if(!practice?.notes.length)return;
+  if(completion||!practice?.notes.length)return;
   if(playing){if(demo)stopDemo();else stopPlayback();checkpoint();return;}
+  if(practice.done)resetPractice();
   silence();ensureAudio();demo=false;playing=true;lastTick=-999;lastInput=0;
   $('#play-button').innerHTML=icon('pause')+' Pausar';$('#practice-status').textContent=options.mode==='wait'?'A tu ritmo':'Sigue el pulso';$('#roll-message').textContent=options.mode==='wait'?'Encuentra las notas iluminadas.':'Cuenta dos pulsos y empieza.';
 }
+function cancelCompletion(){
+  if(!completion)return;
+  clearTimeout(completion.timer);completion=null;
+  if($('#play-button'))$('#play-button').disabled=!practice?.notes.length;
+}
+function scheduleCompletion(){
+  const pending=completion;if(!pending)return;
+  clearTimeout(pending.timer);
+  if(pending.keys.size)return;
+  pending.timer=setTimeout(()=>{
+    if(completion!==pending||practice!==pending.practice||route!=='practice')return;
+    cancelCompletion();stopPlayback();
+    if(loop){resetPractice();togglePlay();return;}
+    openDialog(pending.html);
+  },Math.max(220,pending.notBefore-performance.now()));
+}
 function finishPractice(){
   if(!playing||demo)return;
-  const p=practice,s=currentSong;stopPlayback();delete state.checkpoints[s.id];
+  const p=practice,s=currentSong;playing=false;delete state.checkpoints[s.id];
   const session={id:crypto.randomUUID(),title:s.title,songId:s.id,date:new Date().toISOString(),coverage:p.coverage,accuracy:p.accuracy,mode:options.mode,bpm:options.bpm,seconds:practiceSeconds,source:p.source || 'touch',hand:options.hand,from:options.from,to:options.to};
   state.sessions.push(session);state.sessions=state.sessions.slice(-500);
   state.best[s.id]=Math.max(state.best[s.id] || 0,p.coverage);save();
   const stars=p.coverage>=95&&p.accuracy>=90?3:p.coverage>=65?2:1;
-  openDialog(`<h2>${p.coverage>=80?'Una melodía más cerca.':'Cada intento cuenta.'}</h2><p>${esc(s.title)} · Compases ${options.from}–${options.to}</p><div class="result-stars" aria-label="${stars} de 3 estrellas">${'★'.repeat(stars)}${'☆'.repeat(3-stars)}</div><div class="result-stats"><div><strong>${p.coverage}%</strong><small>Notas acertadas</small></div><div><strong>${p.accuracy}%</strong><small>Precisión de pulsaciones</small></div><div><strong>${p.wrong}</strong><small>Pulsaciones extra</small></div></div><p>${options.mode==='wait'?'Has encontrado todas las notas del fragmento a tu ritmo. Prueba a reducir las pulsaciones extra o a seguir el pulso.':'Las notas que no tocaste a tiempo cuentan como omitidas. Baja el tempo o practica un fragmento más corto si lo necesitas.'}</p><div class="dialog-actions">${action('again','Volver a tocar','primary')}${action('finish-home','Guardar y volver')}</div><p class="onboarding-note">${storageProblem?'No se pudo guardar localmente. Exporta una copia desde Conexión.':'Práctica guardada en este navegador.'} Las estrellas corresponden a este fragmento y esta configuración; no certifican el dominio de la pieza completa.</p>`);
-  if(loop){closeDialog();resetPractice();togglePlay();}
+  const resultHtml=`<h2>${p.coverage>=80?'Una melodía más cerca.':'Cada intento cuenta.'}</h2><p>${esc(s.title)} · Compases ${options.from}–${options.to}</p><div class="result-stars" aria-label="${stars} de 3 estrellas">${'★'.repeat(stars)}${'☆'.repeat(3-stars)}</div><div class="result-stats"><div><strong>${p.coverage}%</strong><small>Notas acertadas</small></div><div><strong>${p.accuracy}%</strong><small>Precisión de pulsaciones</small></div><div><strong>${p.wrong}</strong><small>Pulsaciones extra</small></div></div><p>${options.mode==='wait'?'Has encontrado todas las notas del fragmento a tu ritmo. Prueba a reducir las pulsaciones extra o a seguir el pulso.':'Las notas que no tocaste a tiempo cuentan como omitidas. Baja el tempo o practica un fragmento más corto si lo necesitas.'}</p><div class="dialog-actions">${action('again','Volver a tocar','primary')}${action('finish-home','Guardar y volver')}</div><p class="onboarding-note">${storageProblem?'No se pudo guardar localmente. Exporta una copia desde Conexión.':'Práctica guardada en este navegador.'} Las estrellas corresponden a este fragmento y esta configuración; no certifican el dominio de la pieza completa.</p>`;
+  const remaining=options.mode==='rhythm'?Math.max(0,Math.max(...p.notes.map(n=>n.beat+n.duration))-currentBeat)*60000/options.bpm:0;
+  completion={practice:p,keys:new Set(p.held),notBefore:performance.now()+Math.max(250,remaining),timer:null,html:resultHtml};
+  $('#play-button').disabled=true;
+  $('#practice-status').textContent='Deja sonar la última nota. Suelta las teclas para terminar.';
+  scheduleCompletion();
 }
 function ensureAudio(){
   try{

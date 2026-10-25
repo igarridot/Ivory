@@ -21,6 +21,7 @@ try{
   const saved=()=>evaluate(`JSON.parse(localStorage.getItem('ivory.personal.v1'))`);
   await send('Page.enable');await send('Runtime.enable');await send('Network.enable');
   await send('Emulation.setFocusEmulationEnabled',{enabled:true});
+  await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   await send('Page.addScriptToEvaluateOnNewDocument',{source:`
     window.audioQa={starts:0,active:0,oscillators:0,cancelledFuture:0};
     const base=BaseAudioContext.prototype,originalSource=base.createBufferSource,originalOscillator=base.createOscillator;
@@ -52,6 +53,72 @@ try{
   assert.deepEqual((await saved()).sessions,before.sessions);
   console.log('PASS real sampled demonstration, no synthesized tones, stop and unchanged progress');
 
+  await click('[data-action="restart"]');await click('#play-button');
+  for(const key of ['a','s','d','f','g','f','d','s','a','a','d','d','s','s','a']){
+    await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true}));document.dispatchEvent(new KeyboardEvent('keyup',{key:${JSON.stringify(key)},bubbles:true}));`);
+  }
+  const completedBefore=(await saved()).sessions.length;
+  await evaluate('document.dispatchEvent(new KeyboardEvent("keydown",{key:"a",bubbles:true}))');
+  assert.equal(await evaluate('document.querySelector("#dialog").open'),false,'The result dialog must not cut the final attack.');
+  await evaluate('new Promise(r=>setTimeout(r,400))');
+  assert.equal(await evaluate('document.querySelector("#dialog").open'),false,'A held final note must keep sounding.');
+  assert.ok(await evaluate('window.audioQa.active>0'),'The final piano sample must remain active.');
+  await evaluate('document.dispatchEvent(new KeyboardEvent("keyup",{key:"a",bubbles:true}))');
+  await until('document.querySelector("#dialog").open');await until('window.audioQa.active===0');
+  assert.equal((await saved()).sessions.length,completedBefore+1);
+  assert.equal((await saved()).sessions.at(-1).coverage,100);
+  await click('[data-action="again"]');
+  console.log('PASS final note sounds while held, result waits for release, and one session is saved');
+
+  await evaluate(`(async()=>{const {SONGS}=await import('./curriculum.js');SONGS.push({id:'qa-final-chord',title:'QA final chord',composer:'QA',level:1,stage:0,color:'sage',bpm:200,beatsPerBar:4,barStarts:[0],endBeat:4,notes:[{pitch:60,beat:0,duration:4,hand:'right'},{pitch:64,beat:0,duration:4,hand:'right'}]});})()`);
+  const openChord=async()=>{await evaluate('location.hash="#practice/qa-final-chord"');await until('document.querySelector("h1").textContent==="QA final chord"');};
+  const down=key=>evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true}))`);
+  const up=key=>evaluate(`document.dispatchEvent(new KeyboardEvent('keyup',{key:${JSON.stringify(key)},bubbles:true}))`);
+  const change=(selector,value)=>evaluate(`{const e=document.querySelector(${JSON.stringify(selector)});e.value=${JSON.stringify(value)};e.dispatchEvent(new Event('change',{bubbles:true}));}`);
+  const wait=ms=>evaluate(`new Promise(r=>setTimeout(r,${ms}))`);
+  await openChord();await click('#play-button');await down('a');await down('d');await up('a');
+  await wait(300);assert.equal(await evaluate('document.querySelector("#dialog").open'),false);
+  assert.ok(await evaluate('window.audioQa.active>0'));
+  await up('d');await until('document.querySelector("#dialog").open');await click('[data-action="again"]');
+  console.log('PASS final chord waits for every key to be released');
+  const mouseKey=async(pitch,type)=>{
+    await evaluate(`document.querySelector('[data-pitch="${pitch}"]').scrollIntoView({block:'center'})`);
+    const point=await evaluate(`{const r=document.querySelector('[data-pitch="${pitch}"]').getBoundingClientRect();({x:r.x+r.width/2,y:r.y+r.height*.85});}`);
+    await send('Input.dispatchMouseEvent',{type,x:point.x,y:point.y,button:'left',buttons:type==='mousePressed'?1:0,clickCount:1});
+  };
+  await click('#play-button');await mouseKey(60,'mousePressed');await mouseKey(60,'mouseReleased');await mouseKey(64,'mousePressed');
+  await wait(300);assert.equal(await evaluate('document.querySelector("#dialog").open'),false);assert.ok(await evaluate('window.audioQa.active>0'));
+  await mouseKey(64,'mouseReleased');await until('document.querySelector("#dialog").open');await click('[data-action="again"]');
+  console.log('PASS actual pointer capture on the virtual keyboard preserves the last note until release');
+
+
+  await click('[data-action="practice-settings"]');await change('#loop','yes');await click('[data-action="close-dialog"]');
+  await click('#play-button');await down('a');await down('d');await up('a');await wait(300);
+  assert.match(await evaluate('document.querySelector("#score-count").textContent'),/^2/);
+  await up('d');await until('document.querySelector("#practice-status").textContent==="A tu ritmo"');
+  assert.match(await evaluate('document.querySelector("#score-count").textContent'),/^0/);
+  assert.equal(await evaluate('document.querySelector("#dialog").open'),false);
+  await click('[data-action="practice-settings"]');await change('#loop','no');await click('[data-action="close-dialog"]');
+  console.log('PASS automatic repetition lets the final chord finish before restarting');
+
+  await click('#play-button');await down('a');await down('d');await up('a');await up('d');
+  await click('[data-route="learn"]');await wait(450);
+  assert.equal(await evaluate('document.querySelector("#dialog").open'),false);
+  assert.equal(await evaluate('document.querySelectorAll(".unit-card").length'),40);
+  await openChord();await click('#play-button');await down('a');await down('d');await up('a');await up('d');
+  const afterBlurCompletion=(await saved()).sessions.length;
+  await evaluate('window.dispatchEvent(new Event("blur"))');await wait(350);
+  assert.equal(await evaluate('document.querySelector("#dialog").open'),false);
+  await click('#play-button');assert.match(await evaluate('document.querySelector("#score-count").textContent'),/^0/);
+  assert.equal((await saved()).sessions.length,afterBlurCompletion);
+  await click('[data-route="learn"]');
+  await openChord();await change('#mode','rhythm');await click('#play-button');await until('document.querySelectorAll(".note-chip").length===2');await wait(200);
+  await down('a');await down('d');await up('a');await up('d');
+  await wait(350);assert.equal(await evaluate('document.querySelector("#dialog").open'),false,'Rhythm must wait for the written final duration.');
+  await until('document.querySelector("#dialog").open');assert.equal((await saved()).sessions.at(-1).coverage,100);
+  await click('[data-action="finish-home"]');await click('[data-song="five"]');
+  console.log('PASS pending results cancel on navigation and rhythm respects the final written duration');
+
   const starts=await evaluate('window.audioQa.starts');
   await evaluate('document.dispatchEvent(new KeyboardEvent("keydown",{key:"a",bubbles:true}))');
   await until(`window.audioQa.starts>${starts}`);
@@ -72,6 +139,13 @@ try{
   await evaluate('window.audioQaInput.onmidimessage({data:[144,60,90]});window.audioQaInput.onmidimessage({data:[128,60,0]})');
   assert.equal(await evaluate('window.audioQa.starts'),midiStarts);
   console.log('PASS physical MIDI input does not duplicate the piano sound in the browser');
+  await openChord();await click('#play-button');
+  await evaluate('window.audioQaInput.onmidimessage({data:[144,60,90]});window.audioQaInput.onmidimessage({data:[144,64,90]});window.audioQaInput.onmidimessage({data:[128,60,0]})');
+  await wait(300);assert.equal(await evaluate('document.querySelector("#dialog").open'),false);
+  await evaluate('window.audioQaInput.onmidimessage({data:[128,64,0]})');await until('document.querySelector("#dialog").open');
+  assert.equal(await evaluate('window.audioQa.starts'),midiStarts);await click('[data-action="finish-home"]');
+  console.log('PASS physical MIDI chord completion also waits for release without duplicate browser audio');
+
 
   await click('[data-route="library"]');await click('[data-song="five"]');
   await evaluate(`(async()=>{const {GrandPiano}=await import('./piano-audio.js');window.originalPianoLoad=GrandPiano.prototype.load;GrandPiano.prototype.load=function(){const self=this;return new Promise(resolve=>{window.finishPianoLoad=()=>resolve(window.originalPianoLoad.call(self));});};})()`);
@@ -83,7 +157,7 @@ try{
   console.log('PASS navigating during audio loading prevents playback from starting afterwards');
 
   await evaluate('navigator.serviceWorker.ready');await until('!!navigator.serviceWorker.controller');
-  assert.equal(await evaluate(`(async()=>{const cache=await caches.open('ivory-v4');return (await cache.keys()).filter(r=>new URL(r.url).pathname.endsWith('.mp3')).length})()`),30);
+  assert.equal(await evaluate(`(async()=>{const cache=await caches.open('ivory-v5');return (await cache.keys()).filter(r=>new URL(r.url).pathname.endsWith('.mp3')).length})()`),30);
   assert.equal(await evaluate(`(async()=>{const r=await fetch('./audio/salamander/C4.mp3');return r.headers.get('content-type');})()`),'audio/mpeg');
   await send('Network.emulateNetworkConditions',{offline:true,latency:0,downloadThroughput:0,uploadThroughput:0});
   await send('Page.reload');await until('!!document.querySelector("h1")');

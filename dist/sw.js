@@ -1,4 +1,4 @@
-const CACHE = 'ivory-v4';
+const CACHE = 'ivory-v5';
 const ASSETS = ['./','./index.html','./style.css','./app.js','./piano-audio.js','./music.js','./import.js','./musicxml.js','./archive.js','./theme.js','./curriculum.js','./content.js','./personal-library.js','./score-data.js','./progress.js','./vendor/fflate.js','./scores/manifest.json','./audio/salamander/manifest.json','./audio/salamander/README.txt','./audio/salamander/LICENSE.txt','./icon.svg','./manifest.webmanifest'];
 self.addEventListener('install', event => event.waitUntil((async()=>{
   const cache=await caches.open(CACHE);

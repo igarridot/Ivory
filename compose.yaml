@@ -9,7 +9,7 @@ services:
     init: true
     restart: unless-stopped
     ports:
-      - "{IVORY_PORT:-5173}:5173"
+      - "${IVORY_PORT:-5173}:5173"
     volumes:
       - type: bind
         source: ./data/uploads

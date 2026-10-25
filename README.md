@@ -13,7 +13,7 @@ No necesitas saber leer una partitura para empezar. Sigue las notas que se acerc
 - **A mi ritmo**: el recorrido espera hasta que encuentres las notas correctas, también en los acordes.
 - **Seguir el pulso**: practica con una referencia temporal y consulta tus aciertos, precisión y cobertura.
 - Trabaja la mano derecha, la izquierda o ambas; elige un fragmento por compases, repítelo y ajusta el tempo entre 20 y 200 BPM.
-- Escucha las demostraciones con **sonido de piano de cola** o activa el metrónomo antes de volver a intentarlo.
+- Escucha las demostraciones con **sonido de piano de cola** o activa el metrónomo antes de volver a intentarlo. Al completar un ejercicio, el resultado espera a que sueltes las teclas y termine la salida del sonido.
 - Usa una entrada MIDI de tu piano, el teclado táctil o las teclas del ordenador para explorar.
 
 ![Práctica de Moonlight en tema oscuro, con notas descendentes, selección de manos, tempo y teclado virtual](docs/screenshots/practica-oscuro.png)
@@ -269,7 +269,7 @@ node scripts/browser-qa.mjs --sample /ruta/a/partitura.mxl
 
 Opciones: `--cdp` (por defecto `http://127.0.0.1:9227`), `--url` (por defecto `http://127.0.0.1:5173/`) y `--artifacts` para informes y capturas.
 
-El audio tiene una comprobación adicional con `node scripts/audio-qa.mjs`, que acepta las mismas opciones `--cdp` y `--url`. Verifica la decodificación real de los 30 MP3, la escucha sin alterar el progreso, la liberación de notas, la cancelación al navegar y la carga desde caché sin red. También renderiza un acorde con Web Audio para comprobar señal, nivel y silencio tras cancelar.
+El audio tiene una comprobación adicional con `node scripts/audio-qa.mjs`, que acepta las mismas opciones `--cdp` y `--url`. Verifica la decodificación real de los 30 MP3, la escucha sin alterar el progreso, la última nota y los acordes al completar ejercicios, la repetición automática, la duración final en modo ritmo, la cancelación al navegar y la carga desde caché sin red. También renderiza un acorde con Web Audio para comprobar señal, nivel y silencio tras cancelar.
 
 Se han verificado el tema claro/oscuro y su persistencia, recuperación exacta de práctica, demostración sin pérdida de progreso, las 40 lecciones y filtros, subida/guardado en disco/descarga/apertura del MXL de Moonlight, reinicios por elemento y global con cancelación, migración del progreso anterior, **lectura de 69/69 partituras**, diseño a tamaños de ordenador/tablet/móvil, alineación de teclas y notas, y recarga/apertura del repertorio sin red. También se han repetido las pruebas de MIDI simulado y restauración de copias de la versión anterior. No equivale a una prueba con el piano ni en iPadOS físico.
 

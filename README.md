@@ -1,6 +1,68 @@
 # Ivory
 
-Webapp personal de piano en español, preparada para iPad y Casio AP-300. Biblioteca incluida, curso por etapas y uso local. Primera release pública: `v0.1.0`. No requiere instalar paquetes npm para ejecutar la aplicación; la dependencia ZIP está incluida con su licencia.
+Aprende piano desde cero y toca la música que te motiva, a tu ritmo. Ivory combina práctica con notas descendentes, técnica y teoría musical en una webapp personal en español, pensada para el Casio AP-300 y el uso local.
+
+**40 lecciones · 8 etapas · 37 ejercicios originales · 69 partituras incluidas**
+
+![Inicio de Ivory en tema claro: primera práctica, objetivo diario y siguiente lección](docs/screenshots/inicio-claro.png)
+
+## Toca desde la primera nota
+
+No necesitas saber leer una partitura para empezar. Sigue las notas que se acercan al teclado y construye cada frase poco a poco.
+
+- **A mi ritmo**: el recorrido espera hasta que encuentres las notas correctas, también en los acordes.
+- **Seguir el pulso**: practica con una referencia temporal y consulta tus aciertos, precisión y cobertura.
+- Trabaja la mano derecha, la izquierda o ambas; elige un fragmento por compases, repítelo y ajusta el tempo entre 20 y 200 BPM.
+- Escucha una demostración o activa el metrónomo antes de volver a intentarlo.
+- Usa una entrada MIDI de tu piano, el teclado táctil o las teclas del ordenador para explorar.
+
+![Práctica de Moonlight en tema oscuro, con notas descendentes, selección de manos, tempo y teclado virtual](docs/screenshots/practica-oscuro.png)
+
+## Aprende lo que estás tocando
+
+El modo **Aprender** reúne 40 lecciones en ocho etapas, desde las primeras notas hasta la preparación de repertorio profesional. Técnica, ritmo, teoría, oído e interpretación se trabajan con explicaciones, preguntas y actividades para llevar al teclado.
+
+Los 37 ejercicios originales permiten practicar conceptos sin depender de una pieza concreta. Puedes explorar cualquier etapa y pasar de una lección a su estudio. La ruta avanzada incluye análisis, escucha y revisión de interpretaciones; su [alcance](#alcance-de-la-ruta-de-aprendizaje) distingue lo que registra la app de lo que requiere valoración externa.
+
+![Modo Aprender en tema oscuro: ruta por etapas, lecciones y reinicio individual del progreso](docs/screenshots/aprender-oscuro.png)
+
+## Una biblioteca que crece contigo
+
+Explora las **69 partituras incluidas** de MuseTrainer, busca por título o autor y encuentra estudios por etapa. Moonlight ya forma parte del repertorio disponible.
+
+También puedes importar tus propios archivos **MXL, MusicXML y MIDI**, incluidos los obtenidos mediante las opciones permitidas de MuseScore. Ivory conserva el original en tu carpeta local para que puedas descargarlo de nuevo. Consulta los [formatos y la procedencia](#biblioteca-incluida-y-archivos-personales).
+
+![Biblioteca de Ivory en tema claro: repertorio incluido, búsqueda, filtro de autor e importación de partituras](docs/screenshots/biblioteca-claro.png)
+
+## Continúa donde lo dejaste
+
+- **Práctica guardada**: retoma el fragmento, tempo, manos y punto de práctica de la sesión anterior.
+- **Tu rutina**: consulta resultados, tiempo practicado y rachas; ajusta el objetivo diario y los recordatorios de descanso.
+- **Copias de progreso**: exporta e importa tus avances para conservarlos o cambiar de navegador. Cada navegador mantiene su propio progreso.
+- **Reinicios a tu medida**: empieza de nuevo una pieza, una lección o todo el recorrido conservando tus partituras.
+- **Tema claro y oscuro**: elige tu apariencia o sigue la del sistema; la preferencia se recuerda.
+- **Práctica sin conexión**: tras la primera carga completa, la app y el repertorio incluido quedan en caché. Guardar una partitura nueva necesita el servidor local.
+
+Puedes ejecutar Ivory en el Mac y conectar el piano desde un navegador con Web MIDI. Para abrirla desde el iPad, consulta la [configuración de HTTPS local](#ipad-desde-la-red-local) y la [conexión MIDI](#ipad-y-conexión-real).
+
+## Documentación
+
+Para empezar, sigue [Docker Compose y Make](#docker-compose-y-make) o la [ejecución directa con Node.js](#ejecutar-y-verificar-sin-docker). Toda la información de instalación, funcionamiento y límites está disponible en estas secciones:
+
+- [Docker Compose y Make](#docker-compose-y-make)
+- [GitHub Actions y Docker Hub](#github-actions-y-docker-hub)
+- [Almacenamiento de partituras subidas](#almacenamiento-de-partituras-subidas)
+- [Reiniciar progreso](#reiniciar-progreso)
+- [Ejecutar y verificar sin Docker](#ejecutar-y-verificar-sin-docker)
+- [iPad desde la red local](#ipad-desde-la-red-local)
+- [Funciones actuales](#funciones-actuales)
+- [iPad y conexión real](#ipad-y-conexión-real)
+- [Biblioteca incluida y archivos personales](#biblioteca-incluida-y-archivos-personales)
+- [Alcance de la ruta de aprendizaje](#alcance-de-la-ruta-de-aprendizaje)
+- [Límites actuales](#límites-actuales)
+- [Verificación realizada](#verificación-realizada)
+- [Fuentes técnicas](#fuentes-técnicas)
+- [Licencia](#licencia)
 
 ## Docker Compose y Make
 
@@ -87,7 +149,7 @@ En **Conexión → 04 · Conserva tu camino** está «Restablecer progreso globa
 
 ## Ejecutar y verificar sin Docker
 
-Para ejecución directa requiere Node.js 24 o posterior. Las pruebas de TLS requieren también OpenSSL. Para ejecutar en contenedor, instala Docker con Compose. Esas pruebas generan un certificado temporal y no instalan confianza en el sistema.
+Para ejecución directa requiere Node.js 24 o posterior. No requiere instalar paquetes npm para ejecutar la aplicación; la dependencia ZIP está incluida con su licencia. Las pruebas de TLS requieren también OpenSSL. Para ejecutar en contenedor, instala Docker con Compose. Esas pruebas generan un certificado temporal y no instalan confianza en el sistema.
 
 ```sh
 npm run dev

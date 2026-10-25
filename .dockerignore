@@ -21,3 +21,4 @@ artifacts
 *.pem
 *.key
 README.md
+docs/

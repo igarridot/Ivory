@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
     inputs:
       bump:
@@ -15,12 +15,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: ivory-release-main
+  group: ivory-release-master
   cancel-in-progress: false
 
 jobs:
   checks:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master'
     uses: ./.github/workflows/tests.yml
     permissions:
       contents: read
@@ -28,7 +28,7 @@ jobs:
   publish:
     name: Publish multi-platform Docker image and release
     needs: checks
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -55,17 +55,17 @@ jobs:
             echo "::error::Configure DOCKER_USERNAME and DOCKER_PASSWORD in this repository."
             exit 1
           fi
-      - name: Skip a superseded main revision
+      - name: Skip a superseded master revision
         id: revision
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/master" --jq .object.sha)"
           if [ "$current" = "$GITHUB_SHA" ]; then
             echo "current=true" >> "$GITHUB_OUTPUT"
           else
             echo "current=false" >> "$GITHUB_OUTPUT"
-            echo "A newer main revision will publish the next release."
+            echo "A newer master revision will publish the next release."
           fi
       - name: Compute semantic version
         id: version

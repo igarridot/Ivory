@@ -40,8 +40,8 @@ El target `test` incluye OpenSSL y ejecuta las mismas comprobaciones que `make t
 
 El contenido de esta carpeta es la raíz de [igarridot/Ivory](https://github.com/igarridot/Ivory). No hay una carpeta `ivory/` adicional dentro del repositorio.
 
-- **Tests**: se ejecuta al abrir una PR, actualizar sus commits, reabrirla o marcarla como lista. También admite ejecución manual y se reutiliza antes de cada release. Prueba Node.js 24, la imagen Alpine, el contenedor y el bind mount en runners nativos **amd64** y **arm64**.
-- **Release**: se ejecuta al actualizar `main`, después de superar las pruebas de ambas arquitecturas. Calcula una versión semántica, publica la imagen Docker multi-arquitectura, verifica su manifiesto y crea la tag y la release de GitHub. La primera versión es `v0.1.0`; las siguientes incrementan el patch automáticamente. Una revisión de `main` sustituida por otra más reciente no se publica.
+- **Tests**: se ejecuta en PR dirigidas a `master` al abrirlas, actualizar sus commits, reabrirlas, editarlas o marcarlas como listas. También admite ejecución manual y se reutiliza antes de cada release. Prueba Node.js 24, la imagen Alpine, el contenedor y el bind mount en runners nativos **amd64** y **arm64**.
+- **Release**: se ejecuta al actualizar `master`, después de superar las pruebas de ambas arquitecturas. Calcula una versión semántica, publica la imagen Docker multi-arquitectura, verifica su manifiesto y crea la tag y la release de GitHub. La primera versión es `v0.1.0`; las siguientes incrementan el patch automáticamente. Una revisión de `master` sustituida por otra más reciente no se publica.
 - Desde Actions → Release → Run workflow se puede lanzar manualmente y elegir incremento `patch`, `minor` o `major`. Si la revisión ya tiene una tag semántica, se reutiliza para que un reintento no genere otra versión.
 
 La imagen se publica por defecto en **`norbega/ivory`**, con etiquetas `0.1.0`, `v0.1.0` y `latest` para la primera release, y plataformas `linux/amd64` y `linux/arm64`. `latest` se actualiza al terminar la publicación de la release. La variable de repositorio `DOCKERHUB_IMAGE` permite cambiar el nombre de la imagen.
@@ -51,7 +51,7 @@ Los secrets de Actions requeridos en **Ivory** son `DOCKER_USERNAME` y `DOCKER_P
 ```sh
 docker pull norbega/ivory:0.1.0
 # Ejecución manual de la release desde GitHub CLI:
-gh workflow run release.yml --repo igarridot/Ivory --ref main -f bump=patch
+gh workflow run release.yml --repo igarridot/Ivory --ref master -f bump=patch
 ```
 
 Los workflows de PR no reciben credenciales de Docker Hub ni permisos de escritura. Las acciones externas están fijadas a commits verificados. La tag se crea en el mismo workflow que publica la imagen, evitando depender de que una tag creada con `GITHUB_TOKEN` dispare otro workflow.

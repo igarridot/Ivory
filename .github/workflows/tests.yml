@@ -2,7 +2,8 @@ name: Tests
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [master]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   workflow_call:
   workflow_dispatch:
 

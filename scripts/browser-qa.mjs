@@ -115,7 +115,8 @@ try{
   console.log('PASS tablet/phone layouts and note-to-key alignment');
 
   await evaluate('navigator.serviceWorker.ready.then(()=>true)');await until('!!navigator.serviceWorker.controller');
-  assert.equal(await evaluate(`(async()=>{const cache=await caches.open('ivory-v3');return (await cache.keys()).filter(r=>new URL(r.url).pathname.endsWith('.mxl')).length})()`),69);
+  assert.equal(await evaluate(`(async()=>{const cache=await caches.open('ivory-v4');return (await cache.keys()).filter(r=>new URL(r.url).pathname.endsWith('.mxl')).length})()`),69);
+  assert.equal(await evaluate(`(async()=>{const cache=await caches.open('ivory-v4');return (await cache.keys()).filter(r=>new URL(r.url).pathname.endsWith('.mp3')).length})()`),30);
   await send('Network.enable');await send('Network.emulateNetworkConditions',{offline:true,latency:0,downloadThroughput:0,uploadThroughput:0});
   await send('Page.reload');await until('!!document.querySelector("#roll")');
   await click('[data-route="library"]');await click('[data-tab="catalog"]');

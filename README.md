@@ -13,7 +13,7 @@ No necesitas saber leer una partitura para empezar. Sigue las notas que se acerc
 - **A mi ritmo**: el recorrido espera hasta que encuentres las notas correctas, también en los acordes.
 - **Seguir el pulso**: practica con una referencia temporal y consulta tus aciertos, precisión y cobertura.
 - Trabaja la mano derecha, la izquierda o ambas; elige un fragmento por compases, repítelo y ajusta el tempo entre 20 y 200 BPM.
-- Escucha una demostración o activa el metrónomo antes de volver a intentarlo.
+- Escucha las demostraciones con **sonido de piano de cola** o activa el metrónomo antes de volver a intentarlo.
 - Usa una entrada MIDI de tu piano, el teclado táctil o las teclas del ordenador para explorar.
 
 ![Práctica de Moonlight en tema oscuro, con notas descendentes, selección de manos, tempo y teclado virtual](docs/screenshots/practica-oscuro.png)
@@ -198,6 +198,7 @@ La configuración de confianza y el funcionamiento real de MIDIWeb en el iPad qu
 - Las 69 partituras de musetrainer/library incluidas en archivos locales, con búsqueda, autor, paginación y filtros de etapa para los ejercicios.
 - Notas descendentes, teclado táctil y entrada por teclado del ordenador.
 - Modo de espera y modo de ritmo, práctica por manos, tempo de 20 a 200 BPM, fragmentos por compases, repetición, metrónomo y demostración sin puntuación.
+- Sonido de piano de cola en demostraciones, ejemplos auditivos y teclado virtual: 30 muestras locales de Salamander Grand Piano (Yamaha C5), disponibles sin Internet después de la primera carga completa.
 - Entrada MIDI con selección de dispositivo, notas, velocidad de pulsación y estado del pedal. No se solicita SysEx y no se envían órdenes al piano.
 - Importación local de MXL comprimido, MusicXML `score-partwise` sin comprimir y MIDI estándar de formato 0 o 1, hasta 5 MB y 20.000 notas desplegadas. Se conserva el enlace de procedencia si se añade.
 - MXL: lectura de `META-INF/container.xml`, selección del archivo principal, validación de tamaños/rutas y checksum CRC; el XML descomprimido se limita a 30 MB por entrada. No se extraen archivos al disco.
@@ -251,11 +252,12 @@ Completar el curso o lograr una puntuación MIDI no acredita un nivel profesiona
 - MIDI: se ignora percusión del canal 10; manos divididas inicialmente en Do4 y ajustables por registro. No se infieren digitaciones ni una dificultad real. Los compases se calculan con la métrica del archivo; el tempo se normaliza para practicar.
 - `.mscz`, PDF y reconocimiento de audio no están implementados. Exportar MXL o MusicXML desde un editor cuando sea necesario.
 - Precisión = aciertos / (aciertos + pulsaciones extra). Cobertura = notas acertadas / notas del fragmento. Las notas omitidas reducen cobertura. Las estrellas evalúan un fragmento con su configuración, no el dominio de una pieza completa.
+- El sonido de piano usa una capa de velocidad grabada: ajusta el volumen según la pulsación y transpone las notas intermedias. No reproduce todas las capas dinámicas, resonancias ni el modelado de pedal de una librería de estudio. La entrada MIDI del Casio sigue usando el sonido del propio instrumento, sin duplicarlo en el navegador.
 - No se ha validado la conexión con hardware ni en WebKit/iPadOS físico.
 
 ## Verificación realizada
 
-`npm run check` comprueba la sintaxis de los módulos y scripts. `npm test` ejecuta 31 pruebas: el motor de práctica y MIDI, TLS local, integridad de los 69 archivos, límites ZIP, recorrido de repeticiones/casillas, compases variables, adaptación al rango del piano enlaces entre el curso y sus ejercicios, reinicios independientes/globales, persistencia de originales tras reiniciar el servidor, idempotencia, migración, validación de subidas, protección de rutas y cálculo de versiones de release. Las pruebas de TLS no instalan certificados en el sistema.
+`npm run check` comprueba la sintaxis de los módulos y scripts. `npm test` ejecuta 39 pruebas: el motor de práctica y MIDI, TLS local, integridad de los 69 archivos, límites ZIP, recorrido de repeticiones/casillas, compases variables, adaptación al rango del piano, enlaces entre el curso y sus ejercicios, reinicios independientes/globales, persistencia de originales tras reiniciar el servidor, idempotencia, migración, validación de subidas, protección de rutas, cálculo de versiones de release y reproducción de piano por muestras (afinación, polifonía, cancelación y reintento de carga). Las pruebas de TLS no instalan certificados en el sistema.
 
 La comprobación de navegador usa un contexto aislado, sin tocar el progreso del perfil habitual. Con un navegador Chromium iniciado con un puerto de depuración local y el servidor en marcha:
 
@@ -266,6 +268,8 @@ node scripts/browser-qa.mjs --sample /ruta/a/partitura.mxl
 ```
 
 Opciones: `--cdp` (por defecto `http://127.0.0.1:9227`), `--url` (por defecto `http://127.0.0.1:5173/`) y `--artifacts` para informes y capturas.
+
+El audio tiene una comprobación adicional con `node scripts/audio-qa.mjs`, que acepta las mismas opciones `--cdp` y `--url`. Verifica la decodificación real de los 30 MP3, la escucha sin alterar el progreso, la liberación de notas, la cancelación al navegar y la carga desde caché sin red. También renderiza un acorde con Web Audio para comprobar señal, nivel y silencio tras cancelar.
 
 Se han verificado el tema claro/oscuro y su persistencia, recuperación exacta de práctica, demostración sin pérdida de progreso, las 40 lecciones y filtros, subida/guardado en disco/descarga/apertura del MXL de Moonlight, reinicios por elemento y global con cancelación, migración del progreso anterior, **lectura de 69/69 partituras**, diseño a tamaños de ordenador/tablet/móvil, alineación de teclas y notas, y recarga/apertura del repertorio sin red. También se han repetido las pruebas de MIDI simulado y restauración de copias de la versión anterior. No equivale a una prueba con el piano ni en iPadOS físico.
 
@@ -285,5 +289,7 @@ Se han verificado el tema claro/oscuro y su persistencia, recuperación exacta d
 La configuración local se ha validado con `docker compose config`, incluidos el bind mount relativo y el usuario del contenedor. GitHub Actions añade la construcción y la prueba del contenedor en runners con Docker para ambas arquitecturas; el servidor Node, la persistencia tras reinicio y las comprobaciones de navegador también se prueban directamente.
 
 ## Licencia
+
+Las muestras de [Salamander Grand Piano](dist/audio/salamander/README.txt), de Alexander Holm, conservan su licencia [CC BY 3.0](dist/audio/salamander/LICENSE.txt). Se distribuyen 30 archivos MP3 sin modificar de [Tone.js audio](https://github.com/Tonejs/audio/tree/efd8296360f9526e379bfbe5c1698ff54d6a1d34/salamander), con su atribución, procedencia y hashes. La reproducción adapta afinación, volumen y envolvente; no se utiliza el motor Tone.js.
 
 El código del proyecto utiliza la licencia Apache-2.0 del repositorio. La dependencia fflate conserva su licencia MIT en `dist/vendor/fflate.LICENSE`; la procedencia de las partituras se documenta en `dist/scores/SOURCE.txt`.

@@ -7,7 +7,7 @@ import { parseArgs } from 'node:util';
 import { createUploadStore, StoreError } from './upload-store.mjs';
 
 const project=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.webmanifest':'application/manifest+json','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'};
+const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.webmanifest':'application/manifest+json','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.mp3':'audio/mpeg','.txt':'text/plain; charset=utf-8'};
 const MAX_BODY=16*1024*1024;
 const inside=(root,target)=>{const path=relative(root,target);return path===''||!path.startsWith('..')&&!isAbsolute(path);};
 function readJson(request){

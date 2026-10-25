@@ -1,0 +1,25 @@
+name: ivory-piano
+services:
+  app:
+    image: ivory-piano:local
+    build:
+      context: .
+      target: runtime
+    user: "${IVORY_UID:-1000}:${IVORY_GID:-1000}"
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${IVORY_PORT:-5173}:5173"
+    volumes:
+      - type: bind
+        source: ./data/uploads
+        target: /app/data/uploads
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

@@ -1,0 +1,13 @@
+{
+  "name": "ivory-piano",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/server.mjs",
+    "dev:https": "node scripts/serve-https.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "start": "node scripts/server.mjs"
+  }
+}

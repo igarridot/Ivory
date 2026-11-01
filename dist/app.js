@@ -162,7 +162,7 @@ async function navigate(next, id){
   history.replaceState(null,'','#'+hash);window.scrollTo({top:0,behavior:'instant'});
 }
 function render(){({home:renderHome,library:renderLibrary,learn:renderLearn,lesson:renderLesson,progress:renderProgress,connection:renderConnection}[route] || renderHome)();}
-function openDialog(html){cancelCompletion();if(playing){if(demo)stopDemo();else stopPlayback();checkpoint();}else silence();const dialog=$('#dialog');dialog.innerHTML=`<div class="dialog-top"><span class="eyebrow" style="margin:0">IVORY · A TU RITMO</span><button class="close" data-action="close-dialog" aria-label="Cerrar">${icon('close')}</button></div>${html}`;if(!dialog.open)dialog.showModal();}
+function openDialog(html){cancelCompletion();if(playing){stopPlayback();checkpoint();}else silence();const dialog=$('#dialog');dialog.innerHTML=`<div class="dialog-top"><span class="eyebrow" style="margin:0">IVORY · A TU RITMO</span><button class="close" data-action="close-dialog" aria-label="Cerrar">${icon('close')}</button></div>${html}`;if(!dialog.open)dialog.showModal();}
 function closeDialog(){importRequest++;$('#dialog').close();}
 
 function goalDialog(id){const g=GOALS.find(x=>x.id===id);openDialog(`<h2>${g.title}</h2><p>${g.subtitle}</p><div class="goal-modal-art ${g.color}" aria-hidden="true">${g.id==='moonlight'?'☾':g.id==='interstellar'?'✧':'♬'}</div><p>${g.description}</p><div class="notice">${g.label}<br>${g.id==='moonlight'?'Hay versiones de Moonlight en el repertorio incluido. Puedes buscarlas en la biblioteca.':'Puedes importar un archivo autorizado del arreglo que quieras aprender.'}</div><div class="dialog-actions">${g.id==='moonlight'?action('find-moonlight','Ver Moonlight en mi biblioteca','primary'):''}<a class="btn secondary" href="https://musescore.com/sheetmusic?text=${encodeURIComponent(g.query)}" target="_blank" rel="noopener noreferrer">Buscar en MuseScore ↗</a>${action('import','Importar mi archivo')}</div><p class="onboarding-note">No descargamos ni redistribuimos automáticamente partituras de MuseScore. La disponibilidad de formatos depende de cada partitura y de tu acceso.</p>`);}
@@ -207,7 +207,7 @@ function checkpoint(){
   state.checkpoints[currentSong.id]={options:{...options},hits:practice.notes.filter(n=>n.hit).map(n=>n.id),misses:practice.notes.filter(n=>n.missed).map(n=>n.id),correct:practice.correct,wrong:practice.wrong,beat:currentBeat,seconds:practiceSeconds,updated:new Date().toISOString()};
   save();
 }
-function resetPractice(){stopPlayback();practice=new Practice(selectedNotes(),options.mode,Math.max(.15,options.bpm/60*.22));currentBeat=-2;viewBeat=(options.mode==='wait'?practice.current?.beat || 0:0)-2;practiceSeconds=0;lastInput=0;demo=false;demoPlayed.clear();checkpoint();renderPractice();}
+function resetPractice(){stopPlayback();practice=new Practice(selectedNotes(),options.mode,Math.max(.15,options.bpm/60*.22));currentBeat=-2;viewBeat=(options.mode==='wait'?practice.current?.beat || 0:0)-2;practiceSeconds=0;lastInput=0;demo=false;demoSnapshot=null;demoPlayed.clear();checkpoint();renderPractice();}
 function renderPractice(){
   cancelAnimationFrame(frame);observer?.disconnect();
   const s=currentSong;
@@ -307,14 +307,23 @@ function tickFrame(now){
   drawRoll();frame=requestAnimationFrame(tickFrame);
 }
 function stopPlayback(){
-  cancelCompletion();playing=false;demoPlayed.clear();practice?.clearHeld();pointerNotes.clear();computerNotes.clear();silence();
-  if($('#play-button'))$('#play-button').innerHTML=icon('play')+' Continuar';
-  if($('#practice-status'))$('#practice-status').textContent=input?'Piano conectado':'Práctica en pausa';
+  cancelCompletion();playing=false;practice?.clearHeld();pointerNotes.clear();computerNotes.clear();silence();
+  if($('#play-button'))$('#play-button').innerHTML=icon('play')+(demo?' Continuar escucha':' Continuar');
+  if($('#practice-status'))$('#practice-status').textContent=demo?'Escucha en pausa':input?'Piano conectado':'Práctica en pausa';
 }
-function stopDemo(){stopPlayback();demo=false;if(demoSnapshot){currentBeat=demoSnapshot.beat;viewBeat=demoSnapshot.view;demoSnapshot=null;}updatePracticeUI();}
+function stopDemo(){demo=false;stopPlayback();demoPlayed.clear();if(demoSnapshot){currentBeat=demoSnapshot.beat;viewBeat=demoSnapshot.view;demoSnapshot=null;}updatePracticeUI();}
+function resumeDemo(){
+  ensureAudio();playing=true;lastFrame=performance.now();lastTick=-999;
+  for(const n of practice.notes){
+    const remaining=n.beat+n.duration-currentBeat;
+    if(demoPlayed.has(n.id)&&remaining>0)playTone(n.pitch,remaining*60/options.bpm,n.velocity??80);
+  }
+  $('#play-button').innerHTML=icon('pause')+' Detener escucha';$('#practice-status').textContent='Demostración · no puntúa';$('#roll-message').textContent='Escucha cómo se conectan las notas.';
+}
 function togglePlay(){
   if(completion||!practice?.notes.length)return;
-  if(playing){if(demo)stopDemo();else stopPlayback();checkpoint();return;}
+  if(playing){stopPlayback();checkpoint();return;}
+  if(demo){resumeDemo();return;}
   if(practice.done)resetPractice();
   silence();ensureAudio();demo=false;playing=true;lastTick=-999;lastInput=0;
   $('#play-button').innerHTML=icon('pause')+' Pausar';$('#practice-status').textContent=options.mode==='wait'?'A tu ritmo':'Sigue el pulso';$('#roll-message').textContent=options.mode==='wait'?'Encuentra las notas iluminadas.':'Cuenta dos pulsos y empieza.';
@@ -491,9 +500,9 @@ document.addEventListener('click',async event=>{
     case 'again':closeDialog();resetPractice();break;
     case 'finish-home':closeDialog();navigate('home');break;
     case 'demo':{
-      if(!practice.notes.length)break;if(demo){stopDemo();break;}stopPlayback();checkpoint();
+      if(!practice.notes.length)break;if(demo){togglePlay();break;}stopPlayback();checkpoint();
       const song=currentSong;if(!await preparePiano(el)||route!=='practice'||currentSong!==song)break;
-      demoSnapshot={beat:currentBeat,view:viewBeat};demo=true;playing=true;currentBeat=-1;lastFrame=performance.now();demoPlayed.clear();$('#play-button').innerHTML=icon('pause')+' Detener escucha';$('#practice-status').textContent='Demostración · no puntúa';$('#roll-message').textContent='Escucha cómo se conectan las notas.';break;
+      demoSnapshot={beat:currentBeat,view:viewBeat};demo=true;currentBeat=-1;viewBeat=currentBeat;demoPlayed.clear();resumeDemo();break;
     }
     case 'metronome':metronome=!metronome;ensureAudio();el.setAttribute('aria-pressed',String(metronome));el.style.background=metronome?'#d7e2c3':'';break;
     case 'practice-settings':openDialog(`<h2>Ajusta tu práctica.</h2><label class="field">Registro del instrumento<select id="range-fit"><option value="original" ${options.range!=='piano'?'selected':''}>Conservar notas originales</option><option value="piano" ${options.range==='piano'?'selected':''}>Adaptar notas fuera de las 88 teclas</option></select></label><label class="field">Asignación de manos<select id="mapping"><option value="none" ${options.mapping==='none'?'selected':''}>Usar la asignación de la partitura</option><option value="split" ${options.mapping==='split'?'selected':''}>Dividir por registro</option></select></label><label class="field">Primera nota de la mano derecha<select id="split">${[48,55,60,64,67,72].map(n=>`<option value="${n}" ${options.split===n?'selected':''}>${noteName(n)}</option>`).join('')}</select></label><label class="field">Repetir al terminar<select id="loop"><option value="no" ${!loop?'selected':''}>No</option><option value="yes" ${loop?'selected':''}>Sí, repetir el fragmento</option></select></label><label class="field">Nombres de las notas<select id="labels"><option value="yes" ${noteLabels?'selected':''}>Mostrar</option><option value="no" ${!noteLabels?'selected':''}>Ocultar</option></select></label><p>La división por registro es una ayuda: no siempre coincide con la mano adecuada. Cambiar manos o compases reinicia el fragmento.</p>${action('close-dialog','Listo','primary')}`);break;
@@ -549,9 +558,9 @@ document.addEventListener('keydown',event=>{
   const pitch=60+i;computerNotes.set(event.key,pitch);handleOn(pitch);
 });
 document.addEventListener('keyup',event=>{const pitch=computerNotes.get(event.key);if(pitch!==undefined){handleOff(pitch);computerNotes.delete(event.key);}});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){if(demo)stopDemo();else stopPlayback();checkpoint();}});
-window.addEventListener('pagehide',()=>{if(demo)stopDemo();else stopPlayback();checkpoint();});
-window.addEventListener('blur',()=>{if(demo)stopDemo();else stopPlayback();checkpoint();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){stopPlayback();checkpoint();}});
+window.addEventListener('pagehide',()=>{stopPlayback();checkpoint();});
+window.addEventListener('blur',()=>{stopPlayback();checkpoint();});
 $('#dialog').addEventListener('click',event=>{if(event.target===$('#dialog')){const rect=event.target.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)closeDialog();}});
 function initialRoute(){const [r,id]=location.hash.slice(1).split('/');if(['home','library','learn','progress','connection'].includes(r))navigate(r);else if(r==='practice'&&allSongs().some(s=>s.id===decodeURIComponent(id || '')))navigate('practice',decodeURIComponent(id));else if(r==='lesson'&&LESSONS.some(l=>l.id===id))navigate('lesson',id);else navigate('home');}
 window.addEventListener('hashchange',initialRoute);

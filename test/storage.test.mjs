@@ -4,13 +4,14 @@ import { mkdtemp, readFile, readdir, rm, mkdir, symlink, writeFile } from 'node:
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { request } from 'node:http';
 import { createHttpServer } from '../scripts/server.mjs';
 import { MAX_ORIGINAL } from '../scripts/upload-store.mjs';
 
 const score=id=>({id,title:'Mi Moonlight',composer:'Beethoven',notes:[{pitch:60,beat:0,duration:1,hand:'right'}],bpm:60,beatsPerBar:4,fileName:'Moonlight.mxl'});
-async function fixture(t){
+async function fixture(t,{trustProxy=false}={}){
   const folder=await mkdtemp(join(tmpdir(),'ivory-storage-test-')),uploads=join(folder,'uploads');let server;
-  const start=async()=>{server=await createHttpServer({directory:resolve('dist'),uploadsDirectory:uploads});await new Promise((r,j)=>{server.once('error',j);server.listen(0,'127.0.0.1',r);});return `http://127.0.0.1:${server.address().port}`;};
+  const start=async()=>{server=await createHttpServer({directory:resolve('dist'),uploadsDirectory:uploads,trustProxy});await new Promise((r,j)=>{server.once('error',j);server.listen(0,'127.0.0.1',r);});return `http://127.0.0.1:${server.address().port}`;};
   let url=await start();
   const close=()=>server.listening?new Promise(r=>server.close(r)):Promise.resolve();
   t.after(async()=>{await close();await rm(folder,{recursive:true,force:true});});
@@ -52,6 +53,20 @@ test('storage rejects invalid notes, IDs, base64, unsupported formats, oversized
   assert.equal((await fetch(app.url+'/api/scores',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://another.example'},body:'{}'})).status,403);
   assert.equal((await fetch(app.url+'/api/scores',{method:'POST',headers:{'Content-Type':'text/plain'},body:'{}'})).status,415);
   assert.equal((await fetch(app.url+'/api/scores',{method:'POST',headers:{'Content-Type':'application/json'},body:'{bad'})).status,400);
+});
+const proxiedPost=(app,headers)=>new Promise((resolve,reject)=>{
+  const req=request(app.url+'/api/scores',{method:'POST',headers:{'Content-Type':'application/json',Host:'apollo.moderdonia',Origin:'https://apollo.moderdonia',...headers}},response=>{response.resume();response.on('end',()=>resolve({status:response.statusCode}));});
+  req.on('error',reject);req.end(JSON.stringify({score:score('import-proxied')}));
+});
+test('behind a trusted TLS proxy, same-site HTTPS uploads are accepted and other origins are still rejected',async t=>{
+  const app=await fixture(t,{trustProxy:true});
+  assert.equal((await proxiedPost(app,{'X-Forwarded-Proto':'https'})).status,201);
+  assert.equal((await proxiedPost(app,{'X-Forwarded-Proto':'https',Origin:'https://another.example'})).status,403);
+  assert.equal((await proxiedPost(app,{})).status,403);
+});
+test('without proxy trust, a forwarded protocol header cannot change the expected origin',async t=>{
+  const app=await fixture(t);
+  assert.equal((await proxiedPost(app,{'X-Forwarded-Proto':'https'})).status,403);
 });
 test('uploads cannot expose files outside their data directory through paths or symlinks',async t=>{
   const app=await fixture(t),outside=join(app.folder,'outside');await mkdir(outside);await writeFile(join(outside,'score.json'),JSON.stringify(score('import-link')));

@@ -18,8 +18,9 @@ function readJson(request){
     request.on('error',reject);
   });
 }
-export async function createAppHandler({directory,uploadsDirectory=resolve(directory,'../data/uploads')}){
+export async function createAppHandler({directory,uploadsDirectory=resolve(directory,'../data/uploads'),trustProxy=process.env.IVORY_TRUST_PROXY==='1'}){
   const root=await realpath(directory),store=await createUploadStore(uploadsDirectory);
+  const protocolOf=request=>(trustProxy&&String(request.headers['x-forwarded-proto']||'').split(',')[0].trim())||(request.socket.encrypted?'https':'http');
   return async(request,response)=>{
     const json=(status,data)=>{response.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});response.end(request.method==='HEAD'?undefined:JSON.stringify(data));};
     const text=(status,message)=>{response.writeHead(status,{'Content-Type':'text/plain; charset=utf-8'});response.end(request.method==='HEAD'?undefined:message);};
@@ -30,7 +31,7 @@ export async function createAppHandler({directory,uploadsDirectory=resolve(direc
         if(request.method==='GET'){json(200,{apiVersion:1,...await store.list()});return;}
         if(request.method!=='POST'){response.setHeader('Allow','GET, POST');json(405,{error:'Método no permitido.'});return;}
         const origin=request.headers.origin;
-        if(origin&&origin!==`${request.socket.encrypted?'https':'http'}://${request.headers.host}`)throw new StoreError(403,'La solicitud debe proceder de esta aplicación.');
+        if(origin&&origin!==`${protocolOf(request)}://${request.headers.host}`)throw new StoreError(403,'La solicitud debe proceder de esta aplicación.');
         if(!/^application\/json(?:;|$)/i.test(request.headers['content-type']||''))throw new StoreError(415,'Se requiere application/json.');
         if(Number(request.headers['content-length'])>MAX_BODY){request.resume();throw new StoreError(413,'La solicitud supera 16 MB.');}
         json(201,{score:await store.put(await readJson(request))});return;

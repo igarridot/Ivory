@@ -1,0 +1,14 @@
+{
+	skip_install_trust
+	auto_https disable_redirects
+	pki {
+		ca local {
+			name "Ivory Local CA"
+		}
+	}
+}
+
+{$IVORY_DOMAIN:apollo.moderdonia} {
+	tls internal
+	reverse_proxy app:5173
+}

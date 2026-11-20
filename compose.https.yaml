@@ -1,0 +1,36 @@
+services:
+  app:
+    environment:
+      IVORY_TRUST_PROXY: "1"
+    ports: !reset []
+
+  proxy:
+    image: caddy:2.11.2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      IVORY_DOMAIN: ${IVORY_DOMAIN:-apollo.moderdonia}
+    ports:
+      - "${IVORY_HTTPS_PORT:-8445}:443"
+    volumes:
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+      - caddy-data:/data
+      - caddy-config:/config
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+
+volumes:
+  caddy-data:
+  caddy-config:

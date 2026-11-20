@@ -74,6 +74,8 @@ make down     # Detiene los contenedores; conserva las partituras
 make build    # Reconstruye la imagen
 make test     # Comprueba la sintaxis y ejecuta las pruebas con Node local
 make logs     # Sigue los logs
+make https-up # Arranca con HTTPS detrás de Caddy (iPad)
+make https-ca # Exporta el certificado raíz para el iPad
 ```
 
 Abre `http://127.0.0.1:5173` en Chrome o Edge en el Mac. Se conserva el mismo origen utilizado antes, por lo que el progreso previo del navegador sigue disponible. El piano se conecta al navegador del Mac; no hay que pasar Bluetooth o USB al contenedor.
@@ -88,7 +90,7 @@ IVORY_UID="$(id -u)" IVORY_GID="$(id -g)" docker compose up -d --build
 docker compose down
 ```
 
-`compose.yaml` no crea automáticamente la carpeta del host, para evitar que quede con propietario root. Puedes cambiar el puerto con `IVORY_PORT=5180 make up` o mediante `.env`; hay un `.env.example`. El puerto publicado se limita a `127.0.0.1` para uso en el Mac. El servidor HTTPS para iPad se puede ejecutar directamente con Node siguiendo la sección correspondiente.
+`compose.yaml` no crea automáticamente la carpeta del host, para evitar que quede con propietario root. Puedes cambiar el puerto con `IVORY_PORT=5180 make up` o mediante `.env`; hay un `.env.example`. El puerto publicado se limita a `127.0.0.1` para uso en el Mac. Para el iPad, `make https-up` arranca Ivory con HTTPS detrás de Caddy; consulta [iPad desde la red local](#ipad-desde-la-red-local).
 
 Si solo tienes Docker y quieres ejecutar las pruebas dentro de una imagen:
 
@@ -161,7 +163,35 @@ Abre `http://127.0.0.1:5173` en el mismo ordenador que ejecuta el servidor. Los 
 
 ### iPad desde la red local
 
-Para alojar Ivory en un ordenador de casa y abrirla en el iPad, utiliza HTTPS y un certificado que el iPad reconozca como válido. El servidor local ya está preparado; los certificados y la confianza del dispositivo se configuran aparte. HTTPS no añade soporte MIDI a Safari: sigue siendo necesario MIDIWeb u otro navegador con esa capacidad.
+Para alojar Ivory en un ordenador de casa y abrirla en el iPad, utiliza HTTPS y un certificado que el iPad reconozca como válido. HTTPS no añade soporte MIDI a Safari: sigue siendo necesario MIDIWeb u otro navegador con esa capacidad. Hay dos maneras: Docker con un dominio privado (recomendada para un servidor de casa) o Node directo con mkcert.
+
+#### Docker con dominio privado (`apollo.moderdonia`)
+
+`compose.https.yaml` añade un contenedor [Caddy](https://caddyserver.com/docs/caddyfile/directives/tls) delante de Ivory. Caddy crea su propia autoridad de certificados local, emite y renueva el certificado de `apollo.moderdonia` Ningún paso necesita Internet ni puertos abiertos en el router, así que funciona detrás del NAT del proveedor. Un dominio privado como `.moderdonia` no puede obtener un certificado de una CA pública; por eso el iPad debe confiar en la CA local.
+
+1. En el DNS de tu red (router, Pi-hole, AdGuard Home…) crea un registro `A` de `apollo.moderdonia` hacia la IP del servidor Docker. Reserva esa IP en el router.
+2. Arranca Ivory con HTTPS:
+
+   ```sh
+   make https-up
+   ```
+
+   Publica solo el puerto 8445 del servidor (HTTPS); no hay acceso por HTTP. El contenedor de Ivory deja de publicar el 5173: solo Caddy lo alcanza por la red interna de Compose. Para usar otro nombre o puertos: `IVORY_DOMAIN=piano.moderdonia IVORY_HTTPS_PORT=9443 make https-up` (la URL incluye siempre el puerto, salvo que uses 443).
+3. Exporta el certificado raíz:
+
+   ```sh
+   make https-ca
+   ```
+
+   Se guarda en `.certs/ivory-root-ca.crt` (excluido de Git) y muestra su huella SHA-256. Es solo el certificado público; la clave privada de la CA permanece en el volumen `caddy-data` y nunca se exporta.
+4. Envía `ivory-root-ca.crt` al iPad (AirDrop o correo) e instala el perfil en Ajustes → General → VPN y gestión de dispositivos. Después activa la confianza completa en Ajustes → General → Información → Ajustes de confianza de los certificados. Sin este segundo paso el certificado no se acepta. [Instrucciones de Apple](https://support.apple.com/en-us/102390).
+5. Abre `https://apollo.moderdonia:8445` en MIDIWeb y conecta el piano por Bluetooth MIDI o USB.
+
+La CA raíz dura 10 años y vive en el volumen `caddy-data`; los certificados del servidor se renuevan solos. `make https-down` conserva el volumen. Si lo borras (`docker compose ... down -v` o `docker volume rm`), Caddy crea una CA nueva y hay que repetir los pasos 3 y 4. Para detenerlo usa `make https-down`.
+
+Detrás de Caddy, Ivory recibe HTTP y lee el protocolo original de la cabecera `X-Forwarded-Proto`. Solo lo hace con `IVORY_TRUST_PROXY=1`, que `compose.https.yaml` activa, para que las subidas de partituras pasen la comprobación de origen. No actives esa variable si Ivory es accesible sin pasar por un proxy de confianza.
+
+#### Node directo con mkcert
 
 1. Instala [mkcert](https://github.com/FiloSottile/mkcert) en el ordenador. En macOS puedes usar `brew install mkcert`.
 2. Desde la raíz del repositorio, genera un certificado. Sustituye `192.168.1.50` por la IP de tu ordenador en la red doméstica:
@@ -257,7 +287,7 @@ Completar el curso o lograr una puntuación MIDI no acredita un nivel profesiona
 
 ## Verificación realizada
 
-`npm run check` comprueba la sintaxis de los módulos y scripts. `npm test` ejecuta 39 pruebas: el motor de práctica y MIDI, TLS local, integridad de los 69 archivos, límites ZIP, recorrido de repeticiones/casillas, compases variables, adaptación al rango del piano, enlaces entre el curso y sus ejercicios, reinicios independientes/globales, persistencia de originales tras reiniciar el servidor, idempotencia, migración, validación de subidas, protección de rutas, cálculo de versiones de release y reproducción de piano por muestras (afinación, polifonía, cancelación y reintento de carga). Las pruebas de TLS no instalan certificados en el sistema.
+`npm run check` comprueba la sintaxis de los módulos y scripts. `npm test` ejecuta 45 pruebas: el motor de práctica y MIDI, TLS local, comprobación de origen detrás de un proxy TLS, integridad de los 69 archivos, límites ZIP, recorrido de repeticiones/casillas, compases variables, adaptación al rango del piano, enlaces entre el curso y sus ejercicios, reinicios independientes/globales, persistencia de originales tras reiniciar el servidor, idempotencia, migración, validación de subidas, protección de rutas, cálculo de versiones de release y reproducción de piano por muestras (afinación, polifonía, cancelación y reintento de carga). Las pruebas de TLS no instalan certificados en el sistema.
 
 La comprobación de navegador usa un contexto aislado, sin tocar el progreso del perfil habitual. Con un navegador Chromium iniciado con un puerto de depuración local y el servidor en marcha:
 
